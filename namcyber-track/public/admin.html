@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NamCyber Track – Admin</title>
+<style>
+:root{--bg:#f5f7fa;--card:#fff;--text:#14213d;--muted:#5b6678;--line:#d8dee8;--ac:#0b6e4f;--act:#fff;--warn:#b42318;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0e141b;--card:#171f29;--text:#e8edf3;--muted:#9aa7b8;--line:#2b3644;--ac:#3ecf8e;--act:#062417;--warn:#ff8a80;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,sans-serif}
+.w{max-width:1200px;margin:0 auto;padding:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+h1{font-size:1.3rem;margin:0}h2{font-size:1rem;margin:0 0 8px}
+input,select,textarea,button{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)}
+button{cursor:pointer}.pri{background:var(--ac);color:var(--act);border:0;font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.stat b{font-size:1.5rem;display:block}.bar{display:flex;gap:6px;align-items:center;font-size:.85rem;margin:3px 0}.bar span{width:110px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bar i{height:8px;background:var(--ac);border-radius:4px;display:block}
+.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{text-align:left;padding:7px;border-bottom:1px solid var(--line);white-space:nowrap}tr.r{cursor:pointer}tr.r:hover{background:var(--bg)}
+.tag{padding:1px 8px;border-radius:999px;border:1px solid var(--line);font-size:.78rem}.Critical{background:var(--warn);color:var(--bg);border:0}
+pre{white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:8px;font-size:.82rem;overflow-x:auto}.hide{display:none}.m{color:var(--muted)}
+#login{max-width:340px;margin:12vh auto}
+</style></head><body><div class="w">
+<div id="login" class="card"><h1>Admin sign-in</h1><p class="m">NamCyber Track responder dashboard</p>
+<div class="row"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><button class="pri" id="go">Sign in</button></div><p id="lerr" style="color:var(--warn)"></p></div>
+
+<div id="app" class="hide">
+<div class="row" style="justify-content:space-between;margin-bottom:12px"><h1>🛡️ NamCyber Track – Incident tracker</h1><div class="row"><a href="/api/admin/export.csv"><button>Export CSV</button></a><button id="out">Sign out</button></div></div>
+<div class="card"><div class="grid" id="stats"></div></div>
+<div class="card"><h2>💰 Total reported loss</h2><div class="grid" id="loss"></div><p class="m" style="margin:8px 0 0">Totals are kept per currency because amounts are not converted.</p></div>
+<div class="grid"><div class="card"><h2>By status</h2><div id="b-status"></div></div><div class="card"><h2>By severity</h2><div id="b-severity"></div></div><div class="card"><h2>By type</h2><div id="b-category"></div></div><div class="card"><h2>By country</h2><div id="b-country"></div></div></div>
+<div class="card"><h2>Repeated indicators (possible campaigns)</h2><div id="rep" class="m">None yet.</div></div>
+<div class="card"><div class="row"><input id="q" placeholder="Search ID, text, domain, IP, wallet…" style="flex:1;min-width:200px"><select id="fs"><option value="">Any status</option></select><select id="fv"><option value="">Any severity</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select><input id="fc" placeholder="Country"></div>
+<div class="scroll"><table><thead><tr><th>ID</th><th>Received</th><th>Type</th><th>Severity</th><th>Status</th><th>Where</th><th>Loss</th><th>Assignee</th></tr></thead><tbody id="rows"></tbody></table></div><p id="ltot" style="margin:10px 0 0;font-weight:600"></p></div>
+<div id="detail" class="card hide"></div></div></div>
+<script>
+const $=s=>document.querySelector(s),ST=['New','Triaged','Investigating','Escalated','Resolved','Closed'];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(p,o={}){const r=await fetch('/api/admin/'+p,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...o,body:o.body?JSON.stringify(o.body):undefined});if(r.status===401){show(false);throw 0}return r.json()}
+function show(ok){$('#login').classList.toggle('hide',ok);$('#app').classList.toggle('hide',!ok)}
+$('#fs').innerHTML+=ST.map(s=>`<option>${s}</option>`).join('');
+$('#go').onclick=async()=>{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})}),j=await r.json();if(r.ok){show(true);init()}else $('#lerr').textContent=j.error};
+$('#pw').onkeydown=e=>{if(e.key==='Enter')$('#go').click()};
+$('#out').onclick=async()=>{await api('logout',{method:'POST',body:{}});location.reload()};
+function bars(id,d){const m=Math.max(1,...d.map(x=>x.n));$(id).innerHTML=d.length?d.map(x=>`<div class="bar"><span title="${esc(x.k)}">${esc(x.k||'—')}</span><i style="width:${x.n/m*100}px"></i>${x.n}</div>`).join(''):'<span class="m">No data</span>'}
+async function stats(){const s=await api('stats');
+$('#stats').innerHTML=[['Total reports',s.total],['People/accounts affected',s.victims],['Last 30 days',s.daily.reduce((a,x)=>a+x.n,0)]].map(([a,b])=>`<div class="stat"><b>${b}</b>${a}</div>`).join('');
+['status','severity','category','country'].forEach(k=>bars('#b-'+k,s[k]));
+$('#loss').innerHTML=s.loss_by_currency.length?s.loss_by_currency.map(x=>`<div class="stat"><b>${esc(Number(x.total).toLocaleString(undefined,{maximumFractionDigits:2}))} ${esc(x.cur)}</b>${x.n} report${x.n>1?'s':''} with loss</div>`).join(''):'<span class="m">No losses reported yet.</span>';
+$('#rep').innerHTML=s.repeated_indicators.length?s.repeated_indicators.map(x=>`<div><code>${esc(x.value)}</code> <span class="tag">${x.kind}</span> in ${x.n} reports <a href="#" data-q="${esc(x.value)}">search</a></div>`).join(''):'None yet.'}
+$('#rep').onclick=e=>{if(e.target.dataset.q){e.preventDefault();$('#q').value=e.target.dataset.q;list()}};
+async function list(){const p=new URLSearchParams({q:$('#q').value,status:$('#fs').value,severity:$('#fv').value,country:$('#fc').value});[...p].forEach(([k,v])=>!v&&p.delete(k));
+const d=await api('reports?'+p);$('#rows').innerHTML=d.map(r=>`<tr class="r" data-id="${esc(r.id)}"><td>${esc(r.id)}</td><td>${esc(r.created.slice(0,16).replace('T',' '))}</td><td>${esc(r.category)}</td><td><span class="tag ${r.severity}">${r.severity}</span></td><td>${esc(r.status)}</td><td>${esc([r.city,r.country].filter(Boolean).join(', '))}</td><td>${r.loss?esc(r.loss+' '+r.currency):'—'}</td><td>${esc(r.assignee)}</td></tr>`).join('')||'<tr><td colspan=8 class="m">No reports match.</td></tr>';
+const t={};d.forEach(r=>{if(r.loss)t[r.currency||'?']=(t[r.currency||'?']||0)+r.loss});
+$('#ltot').textContent=`${d.length} report${d.length==1?'':'s'} shown. Loss in this list: `+(Object.keys(t).length?Object.entries(t).map(([c,v])=>v.toLocaleString(undefined,{maximumFractionDigits:2})+' '+c).join(' + '):'none')}
+$('#rows').onclick=e=>{const tr=e.target.closest('tr.r');tr&&open(tr.dataset.id)};
+['q','fs','fv','fc'].forEach(i=>$('#'+i).oninput=()=>{clearTimeout(window.t);window.t=setTimeout(list,250)});
+async function open(id){const r=await api('reports/'+encodeURIComponent(id)),d=r.data,i=d.indicators,D=$('#detail');D.classList.remove('hide');
+const il=Object.entries(i).filter(([,v])=>v.length).map(([k,v])=>`<b>${k}</b><pre>${esc(v.join('\n'))}</pre>`).join('')||'<p class="m">No indicators supplied.</p>';
+D.innerHTML=`<h2>${esc(r.id)} – ${esc(r.category)}</h2><div class="grid"><div><p><b>Occurred:</b> ${esc(r.occurred)}<br><b>Vector:</b> ${esc(d.incident.vector)}<br><b>Reported status:</b> ${esc(d.incident.reported_status)}<br><b>Actor:</b> ${esc(d.incident.actor||'unknown')}<br><b>Location:</b> ${esc([r.city,d.location.region,r.country].filter(Boolean).join(', '))} ${r.lat!=null?`(<a target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat=${r.lat}&mlon=${r.lon}#map=10/${r.lat}/${r.lon}">${r.lat}, ${r.lon}</a>)`:''}<br><b>Reporter:</b> ${esc(d.reporter.type)} ${esc(d.reporter.org)} ${d.reporter.anonymous?'(anonymous)':esc(d.reporter.email)}<br><b>Impact:</b> ${r.victims} affected, ${esc(r.loss+' '+r.currency)} via ${esc(d.impact.payment)}<br><b>Data/systems:</b> ${esc(d.impact.affected.join(', '))}<br><b>Actions taken:</b> ${esc(d.impact.actions.join(', '))}<br><b>Evidence:</b> ${esc(d.impact.evidence)}<br><b>Sharing:</b> ${esc(r.tlp)}</p><pre>${esc(d.incident.description)}</pre></div>
+<div>${il}</div>
+<div><h2>Triage</h2><div class="row"><select id="ts">${ST.map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select><select id="tv">${['Low','Medium','High','Critical'].map(s=>`<option ${s===r.severity?'selected':''}>${s}</option>`).join('')}</select></div><p><input id="ta" placeholder="Assignee" value="${esc(r.assignee)}" style="width:100%"></p><textarea id="tn" placeholder="Investigation notes" rows="5" style="width:100%">${esc(r.notes)}</textarea><div class="row" style="margin-top:8px"><button class="pri" id="sv">Save</button><button id="dl" style="color:var(--warn)">Delete</button><button id="cl">Close</button></div><span id="ok" class="m"></span>
+<h2 style="margin-top:12px">Related reports (shared indicators)</h2>${r.related.length?r.related.map(x=>`<div><a href="#" data-id="${esc(x.id)}">${esc(x.id)}</a> ${esc(x.category)}, ${esc(x.country)} – <code>${esc(x.value)}</code></div>`).join(''):'<span class="m">None found.</span>'}</div></div>`;
+D.scrollIntoView({behavior:'smooth'});
+$('#sv').onclick=async()=>{await api('reports/'+encodeURIComponent(id),{method:'PATCH',body:{status:$('#ts').value,severity:$('#tv').value,assignee:$('#ta').value,notes:$('#tn').value}});$('#ok').textContent='Saved ✓';list();stats()};
+$('#dl').onclick=async()=>{if(confirm('Permanently delete this report?')){await api('reports/'+encodeURIComponent(id),{method:'DELETE'});D.classList.add('hide');list();stats()}};
+$('#cl').onclick=()=>D.classList.add('hide');
+D.querySelectorAll('a[data-id]').forEach(a=>a.onclick=e=>{e.preventDefault();open(a.dataset.id)})}
+function init(){stats();list()}
+fetch('/api/admin/session').then(r=>r.json()).then(j=>{show(j.admin);j.admin&&init()});
+</script></body></html>
